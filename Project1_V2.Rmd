@@ -1,0 +1,457 @@
+#Load Library, setwd, import data files
+```{r,message=FALSE,warning=FALSE}
+
+library(tidyverse)
+library(tidytext)
+# install.packages("tidytext", lib="/Library/Frameworks/R.framework/Versions/3.4/Resources/library")
+library(DT)
+library(stringr)
+library('wordcloud')
+# install.packages("igraph", lib="/Library/Frameworks/R.framework/Versions/3.4/Resources/library")
+library(igraph)
+# install.packages("ggraph", lib="/Library/Frameworks/R.framework/Versions/3.4/Resources/library")
+library(ggraph)
+library(tm)
+library(SnowballC)
+library(caret)
+
+rm(list=ls())
+
+setwd('/Users/abhishek/Desktop/Edwisor_Data Science Career/Aggregate_Notes/Project_1')
+
+train = read_csv("train.csv")
+test = read_csv("test.csv")
+submission = read_csv("sample_submission.csv")
+
+```
+
+# View the Data
+```{r,message=FALSE,warning=FALSE}
+
+head(train)
+
+```
+
+# Word Length Distribution
+```{r,message=FALSE,warning=FALSE}
+
+train$len = str_count(train$comment_text)
+test$len = str_count(test$comment_text)
+
+train %>%
+  ggplot(aes(x = len)) +    
+  geom_histogram(fill= 'yellow2',bins = 50) +
+  labs(x= 'Word Length',y = 'Count', title = 'Distribution of Word Length ') +
+  theme_bw()
+
+```
+
+
+
+#Top Ten most Common Words
+```{r,message=FALSE,warning=FALSE}
+
+  train %>%
+    unnest_tokens(word, comment_text) %>%
+    filter(!word %in% stop_words$word) %>%
+    count(word,sort = TRUE) %>%
+    ungroup() %>%
+    # mutate(word = factor(word, levels = rev(unique(word)))) %>%
+    head(10)
+
+
+```
+
+
+#Tokenisation of the sentences
+
+The sentences are broken up into words as shown below.             
+
+```{r,message=FALSE,warning=FALSE}
+
+trainWords <- train %>%
+  unnest_tokens(word, comment_text) %>%
+  count(toxic,severe_toxic,obscene,threat,insult,identity_hate,word, sort = TRUE) %>%
+  ungroup()
+
+head(trainWords,10)
+```
+
+
+#Unique Categories of Text
+The combinations of `toxic,severe toxic,obscene,threat,insult and identity hate` will create unique categories. We will display those categories here.           
+
+```{r,message=FALSE,warning=FALSE}
+
+trainWords <- train %>%
+  unnest_tokens(word, comment_text) %>%
+  count(toxic,severe_toxic,obscene,threat,insult,identity_hate,word) %>%
+  ungroup()
+
+total_words <- trainWords %>% 
+  group_by(toxic,severe_toxic,obscene,threat,insult,identity_hate) %>% 
+  summarize(total = sum(n))
+
+total_words
+
+
+```
+
+
+#TF-IDF
+## Twenty Most Important words
+Here using **TF-IDF** , we investigate the **Twenty Most Important words**                
+```{r, message=FALSE, warning=FALSE}
+
+Category =1:41
+
+total_words$Category = Category
+
+trainWords <- left_join(trainWords, total_words)
+
+#Now we are ready to use the bind_tf_idf which computes the tf-idf for each term. 
+trainWords <- trainWords %>%
+  bind_tf_idf(word, Category, n)
+
+
+plot_trainWords <- trainWords %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+
+plot_trainWords %>% 
+  top_n(20) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'orange') +
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+
+
+```
+
+
+#Various Categories of TF-IDF
+
+##Toxic TF-IDF
+We plot the TF-IDF for the Toxic Comments
+```{r,message=FALSE,warning=FALSE}
+
+
+plot_trainWords %>%
+  filter(toxic == 1 ) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'yellow') +
+  labs(x = 'Toxic Comments', y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+
+```
+
+
+##Severe Toxic TF-IDF
+We plot the TF-IDF for the Severe Toxic Comments
+```{r,message=FALSE,warning=FALSE}
+
+
+plot_trainWords %>%
+  filter(severe_toxic == 1 ) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'yellow') +
+  labs(x = 'Severe Toxic Comments', y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+
+```
+
+##Obscene TF-IDF
+We plot the TF-IDF for the Obscene Comments
+```{r,message=FALSE,warning=FALSE}
+
+
+plot_trainWords %>%
+  filter(obscene == 1 ) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'yellow') +
+  labs(x = 'Obscene Comments', y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+
+```
+
+##Threat TF-IDF
+We plot the TF-IDF for the Threat Comments
+```{r,message=FALSE,warning=FALSE}
+
+
+plot_trainWords %>%
+  filter(threat == 1 ) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'yellow') +
+  labs(x = 'Threat Comments', y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+
+
+# For ???insult??? Comment
+
+plot_trainWords %>%
+  filter(insult == 1 ) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'yellow') +
+  labs(x = 'Insult Comments', y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+
+
+# For ???identity hate??? Comment
+
+plot_trainWords %>%
+  filter(identity_hate == 1 ) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(fill = 'yellow') +
+  labs(x = 'Identity Hate Comments', y = "tf-idf") +
+  coord_flip() +
+  theme_bw()
+```
+
+
+#Word Cloud for the Most Important Words
+We show the **Fifty** most important words. This Word Cloud is based on the **TF- IDF** scores. Higher the score, bigger is the size of the text.                
+```{r, message=FALSE, warning=FALSE}
+
+plot_trainWords %>%
+  with(wordcloud(word, tf_idf, max.words = 50,colors=brewer.pal(8, "Dark2")))
+
+```
+
+
+#Pre-rocessing
+```{r,message =FALSE,warning=FALSE}
+
+# Delete the leading spaces
+library(stringr)
+train$comment_text = str_trim(train$comment_text)
+class(train$comment_text) # Class is 'Charcter'
+
+# Convert comment into corpus
+library(tm)
+traincorpus = Corpus(VectorSource(train$comment_text))
+writeLines(as.character(train$comment_text[10]))
+
+# Case Folding
+traincorpus = tm_map(traincorpus, tolower)
+# Remove Stop Words
+traincorpus = tm_map(traincorpus,removeWords,stopwords('english'))
+# Remove Punctuation marks
+traincorpus = tm_map(traincorpus,removePunctuation)
+# Remove Numbers
+traincorpus = tm_map(traincorpus,removeNumbers)
+# Remove unnecessary spaces
+traincorpus = tm_map(traincorpus,stripWhitespace)
+# Stemming
+traincorpus = tm_map(traincorpus, stemDocument)
+
+###################################################################################
+test$comment_text = str_trim(test$comment_text)
+testcorpus = Corpus(VectorSource(test$comment_text))
+testcorpus = tm_map(testcorpus, tolower)
+testcorpus = tm_map(testcorpus,removeWords,stopwords('english'))
+testcorpus = tm_map(testcorpus,removePunctuation)
+testcorpus = tm_map(testcorpus,removeNumbers)
+testcorpus = tm_map(testcorpus,stripWhitespace)
+testcorpus = tm_map(testcorpus, stemDocument)
+
+###################################################################################
+
+dtm = DocumentTermMatrix(traincorpus)
+dtm = removeSparseTerms(dtm, 0.99)
+train_dataset = as.data.frame(as.matrix(dtm))
+train_dataset$toxic = NULL
+train_dataset$severe_toxic = NULL
+train_dataset$obscene = NULL
+train_dataset$threat = NULL
+train_dataset$insult = NULL
+train_dataset$identity_hate = NULL
+
+###################################################################################
+
+dtm = DocumentTermMatrix(testcorpus)
+dtm = removeSparseTerms(dtm, 0.99)
+test_dataset = as.data.frame(as.matrix(dtm))
+
+######################################################################################
+
+colnamesSame = intersect(colnames(train_dataset),colnames(test_dataset))
+
+train_dataset = train_dataset[ , (colnames(train_dataset) %in% colnamesSame)]
+test_dataset = test_dataset[ , (colnames(test_dataset) %in% colnamesSame)]
+
+
+######################################################################################
+
+
+```
+
+#Modelling using XGBoost
+##Toxic Calculation
+We calculate the various targets and predict the probablities
+```{r,message=FALSE,warning=FALSE}
+
+
+
+dataset2 = train_dataset
+dataset2$toxic = train$toxic
+dataset2$toxic = as.factor(dataset2$toxic)
+levels(dataset2$toxic) = make.names(unique(dataset2$toxic))
+
+formula = toxic ~ .
+
+fitControl <- trainControl(method="none",classProbs=TRUE, summaryFunction=twoClassSummary)
+
+xgbGrid <- expand.grid(nrounds = 500,
+                       max_depth = 3,
+                       eta = .05,
+                       gamma = 0,
+                       colsample_bytree = .8,
+                       min_child_weight = 1,
+                       subsample = 1)
+
+
+set.seed(13)
+
+ToxicXGB = train(formula, data = dataset2,
+                 method = "xgbTree",trControl = fitControl,
+                 tuneGrid = xgbGrid,na.action = na.pass,metric="ROC", maximize=FALSE)
+
+predictionsToxic = predict(ToxicXGB,test_dataset,type = 'prob')
+
+
+#####################################################################################################
+
+```
+
+
+##Severe Toxic Calculation
+```{r,message=FALSE,warning=FALSE}
+
+dataset2 = train_dataset
+dataset2$severe_toxic = train$severe_toxic
+dataset2$severe_toxic = as.factor(dataset2$severe_toxic)
+levels(dataset2$severe_toxic) = make.names(unique(dataset2$severe_toxic))
+
+formula = severe_toxic ~ .
+
+set.seed(13)
+
+ToxicXGB = train(formula, data = dataset2,
+                 method = "xgbTree",trControl = fitControl,
+                 tuneGrid = xgbGrid,na.action = na.pass,metric="ROC", maximize=FALSE)
+
+predictionsSevereToxic = predict(ToxicXGB,test_dataset,type = 'prob')
+
+##########################################################################################
+
+```
+
+##Obscene Calculation
+```{r,message=FALSE,warning=FALSE}
+
+dataset2 = train_dataset
+dataset2$obscene = train$obscene
+dataset2$obscene = as.factor(dataset2$obscene)
+levels(dataset2$obscene) = make.names(unique(dataset2$obscene))
+
+formula = obscene ~ .
+
+ObsceneXGB = train(formula, data = dataset2,
+                 method = "xgbTree",trControl = fitControl,
+                 tuneGrid = xgbGrid,na.action = na.pass,metric="ROC", maximize=FALSE)
+
+predictionsObscene = predict(ObsceneXGB,test_dataset,type = 'prob')
+
+##########################################################################################
+
+```
+
+##Threat Calculation
+```{r,message=FALSE,warning=FALSE}
+
+dataset2 = train_dataset
+dataset2$threat = train$threat
+dataset2$threat = as.factor(dataset2$threat)
+levels(dataset2$threat) = make.names(unique(dataset2$threat))
+
+formula = threat ~ .
+
+ThreatXGB = train(formula, data = dataset2,
+                   method = "xgbTree",trControl = fitControl,
+                   tuneGrid = xgbGrid,na.action = na.pass,metric="ROC", maximize=FALSE)
+
+predictionsThreat = predict(ThreatXGB,test_dataset,type = 'prob')
+
+##########################################################################################
+
+```
+
+
+##Insult Calculation
+```{r,message=FALSE,warning=FALSE}
+
+dataset2 = train_dataset
+dataset2$insult = train$insult
+dataset2$insult = as.factor(dataset2$insult)
+levels(dataset2$insult) = make.names(unique(dataset2$insult))
+
+formula = insult ~ .
+
+InsultXGB = train(formula, data = dataset2,
+                  method = "xgbTree",trControl = fitControl,
+                  tuneGrid = xgbGrid,na.action = na.pass,metric="ROC", maximize=FALSE)
+
+predictionsInsult = predict(InsultXGB,test_dataset,type = 'prob')
+
+##########################################################################################
+
+```
+
+
+##Identity Hate Calculation
+```{r,message=FALSE,warning=FALSE}
+
+dataset2 = train_dataset
+dataset2$identity_hate = train$identity_hate
+dataset2$identity_hate = as.factor(dataset2$identity_hate)
+levels(dataset2$identity_hate) = make.names(unique(dataset2$identity_hate))
+
+formula = identity_hate ~ .
+
+HateXGB = train(formula, data = dataset2,
+                  method = "xgbTree",trControl = fitControl,
+                  tuneGrid = xgbGrid,na.action = na.pass,metric="ROC", maximize=FALSE)
+
+predictionsHate = predict(HateXGB,test_dataset,type = 'prob')
+
+##########################################################################################
+
+```
+
+#Creating the Submissions
+```{r,message=FALSE,warning=FALSE}
+
+submission$toxic = predictionsToxic$X1
+submission$severe_toxic = predictionsSevereToxic$X1
+submission$obscene = predictionsObscene$X1
+submission$threat = predictionsThreat$X1
+submission$insult = predictionsInsult$X1
+submission$identity_hate = predictionsHate$X1
+
+# Write it to file
+write.csv(submission, 'ToxicCommentsSubmission.csv', row.names = F)
+
+```
